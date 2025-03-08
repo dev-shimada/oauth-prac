@@ -1,71 +1,109 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"html/template"
+	"log"
 	"net/http"
-	"net/url"
+	"os/signal"
+	"syscall"
 	"time"
+
+	"github.com/google/uuid"
 )
 
-// 認可サーバーの認可エンドポイントのHTTP Handler
-func (as *AuthorizationServer) AuthorizeEndpoint(w http.ResponseWriter, r *http.Request) {
-	// 必須のパラメーターを取得
-	responseType := r.URL.Query().Get("response_type")
-	clientID := r.URL.Query().Get("client_id")
-	redirectUri := r.URL.Query().Get("redirect_uri")
+var clientInfo = Client{
+	id:          "1234",
+	name:        "test",
+	redirectURL: "http://localhost:8080/callback",
+	secret:      "secret",
+}
 
-	// 今回は認可コードフローのみをサポート
-	if responseType != "code" {
-		http.Error(w, "Invalid response_type", http.StatusBadRequest)
+func main() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Hello, World!"))
+	})
+	mux.HandleFunc("/auth", auth)
+
+	// Wait here until CTRL+C or other term signal is received
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	srv := &http.Server{
+		Addr:    "8080",
+		Handler: mux,
+	}
+
+	log.Println("Server is running at :8080 Press CTRL-C to exit.")
+	go srv.ListenAndServe()
+
+	<-ctx.Done()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("HTTP server Shutdown: %v", err)
+	}
+
+}
+
+func auth(w http.ResponseWriter, req *http.Request) {
+	query := req.URL.Query()
+	requiredParameter := []string{"response_type", "client_id", "redirect_uri"}
+	// 必須パラメータのチェック
+	for _, v := range requiredParameter {
+		if !query.Has(v) {
+			log.Printf("%s is missing", v)
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(fmt.Sprintf("invalid_request. %s is missing", v)))
+			return
+		}
+	}
+	// client id の一致確認
+	if clientInfo.id != query.Get("client_id") {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("client_id is not match"))
 		return
 	}
-
-	// 事前にクライアントに設定されているリダイレクトURIと一致するか確認する
-	client, exists := as.GetClient(ClientID(clientID))
-	if !exists {
-		http.Error(w, "Invalid client_id", http.StatusUnauthorized)
+	// レスポンスタイプはいったん認可コードだけをサポート
+	if query.Get("response_type") != "code" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("only support code"))
 		return
 	}
-	if client.RedirectUri != redirectUri {
-		http.Error(w, "Invalid redirect_uri", http.StatusBadRequest)
-		return
+	sessionId := uuid.New().String()
+	// セッションを保存しておく
+	session := Session{
+		client:                query.Get("client_id"),
+		state:                 query.Get("state"),
+		scopes:                query.Get("scope"),
+		redirectUri:           query.Get("redirect_uri"),
+		code_challenge:        query.Get("code_challenge"),
+		code_challenge_method: query.Get("code_challenge_method"),
 	}
+	var sessionList = make(map[string]Session)
+	sessionList[sessionId] = session
 
-	// 認可コードを生成する
-	code := as.generateAuthorizationCode(client, r.URL.Query().Get("redirect_uri"))
-
-	// リダイレクトURIのクエリパラメーターに認可コードを付与してユーザーエージェントにリダイレクト
-	params := url.Values{"code": {code.Code.String()}}
-	redirectUri += "?" + params.Encode()
-	http.Redirect(w, r, redirectUri, http.StatusFound)
-}
-
-// 認可コードを生成し、認可コード情報をサーバーに保存する
-func (as *AuthorizationServer) generateAuthorizationCode(client *ConfidentialClient, redirectUri string) *authorizationCodeInfo {
-	aci := &authorizationCodeInfo{
-		Code:        uuid.New().String(),
-		ClientID:    client.ID,
-		RedirectUri: redirectUri,
-		ExpiresAt:   time.Now().Add(time.Minute * 10).Unix(),
+	// CookieにセッションIDをセット
+	cookie := &http.Cookie{
+		Name:  "session",
+		Value: sessionId,
 	}
-	as.authorizationCodeInfos[aci.Code] = aci
-	return aci
-}
+	http.SetCookie(w, cookie)
 
-// 生成されている認可コード情報を取得する
-func (as *AuthorizationServer) getAuthorizationCodeInfo(code string) (*authorizationCodeInfo, bool) {
-	aci, exists := as.authorizationCodeInfos[code]
-	return aci, exists
-}
+	// ログイン&権限認可の画面を戻す
+	var templates = make(map[string]*template.Template)
+	if err := templates["login"].Execute(w, struct {
+		ClientId string
+		Scope    string
+	}{
+		ClientId: session.client,
+		Scope:    session.scopes,
+	}); err != nil {
+		log.Println(err)
+	}
+	log.Println("return login page...")
 
-// サーバーで保持するための、認可コード情報
-type authorizationCodeInfo struct {
-	Code        string   // 認可コード
-	ClientID    ClientID // 紐づくクライアントID
-	RedirectUri string   // リダイレクトURI
-	ExpiresAt   int64    // 有効期限（UNIXタイムスタンプ）
-}
-
-func (aci *authorizationCodeInfo) Validate(code string, clientID ClientID) bool {
-	// 認可コードが一致し、かつクライアントIDが一致し、かつ有効期限が切れていない
-	return aci.Code == code && aci.ClientID == clientID && time.Now().Unix() < aci.ExpiresAt
 }
