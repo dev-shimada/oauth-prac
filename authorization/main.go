@@ -26,6 +26,7 @@ func main() {
 		w.Write([]byte("Hello, World!"))
 	})
 	mux.HandleFunc("/auth", auth)
+	mux.HandleFunc("/authcheck", authCheck)
 
 	// Wait here until CTRL+C or other term signal is received
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -105,5 +106,53 @@ func auth(w http.ResponseWriter, req *http.Request) {
 		log.Println(err)
 	}
 	log.Println("return login page...")
+
+}
+
+var user = User{
+	id:          1111,
+	name:        "hoge",
+	password:    "password",
+	sub:         "11111111",
+	name_ja:     "徳川慶喜",
+	given_name:  "慶喜",
+	family_name: "徳川",
+	locale:      "ja",
+}
+
+func authCheck(w http.ResponseWriter, req *http.Request) {
+
+	loginUser := req.FormValue("username")
+	password := req.FormValue("password")
+
+	if loginUser != user.name || password != user.password {
+		w.Write([]byte("login failed"))
+	} else {
+
+		cookie, _ := req.Cookie("session")
+		http.SetCookie(w, cookie)
+
+		var sessionList = make(map[string]Session)
+		v := sessionList[cookie.Value]
+
+		authCodeString := uuid.New().String()
+		authData := AuthCode{
+			user:         loginUser,
+			clientId:     v.client,
+			scopes:       v.scopes,
+			redirect_uri: v.redirectUri,
+			expires_at:   time.Now().Unix() + 300,
+		}
+		// 認可コードを保存
+		var AuthCodeList = make(map[string]AuthCode)
+		AuthCodeList[authCodeString] = authData
+
+		log.Printf("auth code accepet : %v\n", authData)
+
+		location := fmt.Sprintf("%s?code=%s&state=%s", v.redirectUri, authCodeString, v.state)
+		w.Header().Add("Location", location)
+		w.WriteHeader(302)
+
+	}
 
 }

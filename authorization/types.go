@@ -19,3 +19,22 @@ type Client struct {
 	redirectURL string
 	secret      string
 }
+
+type User struct {
+	id          int
+	name        string
+	password    string
+	sub         string
+	name_ja     string
+	given_name  string
+	family_name string
+	locale      string
+}
+
+type AuthCode struct {
+	user         string
+	clientId     string
+	scopes       string
+	redirect_uri string
+	expires_at   int64
+}
