@@ -38,3 +38,17 @@ type AuthCode struct {
 	redirect_uri string
 	expires_at   int64
 }
+
+type TokenCode struct {
+	user       string
+	clientId   string
+	scopes     string
+	expires_at int64
+}
+
+type TokenResponse struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	ExpiresIn   int64  `json:"expires_in"`
+	IdToken     string `json:"id_token,omitempty"`
+}

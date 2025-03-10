@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
@@ -27,13 +30,14 @@ func main() {
 	})
 	mux.HandleFunc("/auth", auth)
 	mux.HandleFunc("/authcheck", authCheck)
+	mux.HandleFunc("/token", token)
 
 	// Wait here until CTRL+C or other term signal is received
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	srv := &http.Server{
-		Addr:    "8080",
+		Addr:    ":8080",
 		Handler: mux,
 	}
 
@@ -120,6 +124,8 @@ var user = User{
 	locale:      "ja",
 }
 
+var sessionList = make(map[string]Session)
+
 func authCheck(w http.ResponseWriter, req *http.Request) {
 
 	loginUser := req.FormValue("username")
@@ -132,7 +138,6 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 		cookie, _ := req.Cookie("session")
 		http.SetCookie(w, cookie)
 
-		var sessionList = make(map[string]Session)
 		v := sessionList[cookie.Value]
 
 		authCodeString := uuid.New().String()
@@ -154,5 +159,115 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(302)
 
 	}
+
+}
+
+// https://auth0.com/docs/authorization/flows/call-your-api-using-the-authorization-code-flow-with-pkce#javascript-sample
+func base64URLEncode(verifier string) string {
+	hash := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(hash[:])
+}
+
+const ACCESS_TOKEN_DURATION = 3600
+
+var AuthCodeList = make(map[string]AuthCode)
+var TokenCodeList = make(map[string]TokenCode)
+
+// トークンを発行するエンドポイント
+func token(w http.ResponseWriter, req *http.Request) {
+
+	cookie, _ := req.Cookie("session")
+	req.ParseForm()
+	query := req.Form
+
+	requiredParameter := []string{"grant_type", "code", "client_id", "redirect_uri"}
+	// 必須パラメータのチェック
+	for _, v := range requiredParameter {
+		if !query.Has(v) {
+			log.Printf("%s is missing", v)
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(fmt.Sprintf("invalid_request. %s is missing\n", v)))
+			return
+		}
+	}
+
+	// 認可コードフローだけサポート
+	if query.Get("grant_type") != "authorization_code" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid_request. not support type.\n"))
+	}
+
+	// 保存していた認可コードのデータを取得。なければエラーを返す
+	v, ok := AuthCodeList[query.Get("code")]
+	if !ok {
+		log.Println("auth code isn't exist")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("no authrization code"))
+	}
+
+	// 認可リクエスト時のクライアントIDと比較
+	if v.clientId != query.Get("client_id") {
+		log.Println("client_id not match")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid_request. client_id not match.\n"))
+	}
+
+	// 認可リクエスト時のリダイレクトURIと比較
+	if v.redirect_uri != query.Get("redirect_uri") {
+		log.Println("redirect_uri not match")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid_request. redirect_uri not match.\n"))
+	}
+
+	// 認可コードの有効期限を確認
+	if v.expires_at < time.Now().Unix() {
+		log.Println("authcode expire")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid_request. auth code time limit is expire.\n"))
+	}
+
+	// clientシークレットの確認
+	if clientInfo.secret != query.Get("client_secret") {
+		log.Println("client_secret is not match.")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid_request. client_secret is not match.\n"))
+	}
+
+	// PKCEのチェック
+	// clientから送られてきたverifyをsh256で計算&base64urlエンコードしてから
+	// 認可リクエスト時に送られてきてセッションに保存しておいたchallengeと一致するか確認
+	session := sessionList[cookie.Value]
+	if session.code_challenge != base64URLEncode(query.Get("code_verifier")) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("PKCE check is err..."))
+	}
+
+	tokenString := uuid.New().String()
+	expireTime := time.Now().Unix() + ACCESS_TOKEN_DURATION
+
+	tokenInfo := TokenCode{
+		user:       v.user,
+		clientId:   v.clientId,
+		scopes:     v.scopes,
+		expires_at: expireTime,
+	}
+	TokenCodeList[tokenString] = tokenInfo
+	// 認可コードを削除
+	delete(AuthCodeList, query.Get("code"))
+
+	tokenResp := TokenResponse{
+		AccessToken: tokenString,
+		TokenType:   "Bearer",
+		ExpiresIn:   expireTime,
+	}
+	resp, err := json.Marshal(tokenResp)
+	if err != nil {
+		log.Println("json marshal err")
+	}
+
+	log.Printf("token ok to client %s, token is %s", v.clientId, string(resp))
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(resp)
 
 }
