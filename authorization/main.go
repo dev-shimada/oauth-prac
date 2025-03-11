@@ -10,10 +10,19 @@ import (
 	"log"
 	"net/http"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/dev-shimada/oidc-prac/authorization/internal/jwt"
 	"github.com/google/uuid"
+)
+
+const (
+	//SCOPE                 = "readonly"
+	SCOPE                 = "https://www.googleapis.com/auth/photoslibrary.readonly"
+	AUTH_CODE_DURATION    = 300
+	ACCESS_TOKEN_DURATION = 3600
 )
 
 var clientInfo = Client{
@@ -31,6 +40,8 @@ func main() {
 	mux.HandleFunc("/auth", auth)
 	mux.HandleFunc("/authcheck", authCheck)
 	mux.HandleFunc("/token", token)
+	mux.HandleFunc("/certs", certs)
+	mux.HandleFunc("/userinfo", userinfo)
 
 	// Wait here until CTRL+C or other term signal is received
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -168,8 +179,6 @@ func base64URLEncode(verifier string) string {
 	return base64.RawURLEncoding.EncodeToString(hash[:])
 }
 
-const ACCESS_TOKEN_DURATION = 3600
-
 var AuthCodeList = make(map[string]AuthCode)
 var TokenCodeList = make(map[string]TokenCode)
 
@@ -186,7 +195,7 @@ func token(w http.ResponseWriter, req *http.Request) {
 		if !query.Has(v) {
 			log.Printf("%s is missing", v)
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(fmt.Sprintf("invalid_request. %s is missing\n", v)))
+			w.Write([]byte("invalid_request. %s is missing\n", v))
 			return
 		}
 	}
@@ -269,5 +278,48 @@ func token(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(resp)
+}
 
+func certs(w http.ResponseWriter, req *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write(jwt.MakeJWK())
+}
+
+func userinfo(w http.ResponseWriter, req *http.Request) {
+	h := req.Header.Get("Authorization")
+	tmp := strings.Split(h, " ")
+
+	// トークンがあるか確認
+	v, ok := TokenCodeList[tmp[1]]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("token is wrong.\n"))
+		return
+	}
+
+	// トークンの有効期限が切れてないか
+	if v.expires_at < time.Now().Unix() {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("token is expire.\n"))
+		return
+	}
+
+	// スコープが正しいか、openid profileで固定
+	if v.scopes != "openid profile" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("scope is not permit.\n"))
+		return
+	}
+
+	// ユーザ情報を返す
+	var m = map[string]interface{}{
+		"sub":         user.sub,
+		"name":        user.name_ja,
+		"given_name":  user.given_name,
+		"family_name": user.family_name,
+		"locale":      user.locale,
+	}
+	buf, _ := json.MarshalIndent(m, "", "  ")
+	w.WriteHeader(http.StatusOK)
+	w.Write(buf)
 }
