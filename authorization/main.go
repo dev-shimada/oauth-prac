@@ -65,6 +65,8 @@ func main() {
 
 }
 
+var sessionList = make(map[string]Session)
+
 func auth(w http.ResponseWriter, req *http.Request) {
 	query := req.URL.Query()
 	requiredParameter := []string{"response_type", "client_id", "redirect_uri"}
@@ -99,7 +101,6 @@ func auth(w http.ResponseWriter, req *http.Request) {
 		code_challenge:        query.Get("code_challenge"),
 		code_challenge_method: query.Get("code_challenge_method"),
 	}
-	var sessionList = make(map[string]Session)
 	sessionList[sessionId] = session
 
 	// CookieにセッションIDをセット
@@ -135,8 +136,6 @@ var user = User{
 	locale:      "ja",
 }
 
-var sessionList = make(map[string]Session)
-
 func authCheck(w http.ResponseWriter, req *http.Request) {
 
 	loginUser := req.FormValue("username")
@@ -160,8 +159,8 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 			expires_at:   time.Now().Unix() + 300,
 		}
 		// 認可コードを保存
-		var AuthCodeList = make(map[string]AuthCode)
-		AuthCodeList[authCodeString] = authData
+		// var AuthCodeList = make(map[string]AuthCode)
+		// AuthCodeList[authCodeString] = authData
 
 		log.Printf("auth code accepet : %v\n", authData)
 
@@ -195,7 +194,8 @@ func token(w http.ResponseWriter, req *http.Request) {
 		if !query.Has(v) {
 			log.Printf("%s is missing", v)
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("invalid_request. %s is missing\n", v))
+			b := make([]byte, 0)
+			w.Write(fmt.Appendf(b, "invalid_request. %s is missing\n", v))
 			return
 		}
 	}
