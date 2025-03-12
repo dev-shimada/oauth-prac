@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login</title>
+</head>
+<body>
+    <h2>Client App</h2>
+    <p>{{.ClientId}}</p>
+    <h2>Requested Permissions</h2>
+    <p>{{.Scope}}</p>
+    <hr>
+    <div align="center">
+        <table border="0">
+            <form action="/authcheck" method="post">
+                <tr>
+                    <th>
+                        ユーザID
+                    </th>
+                    <td>
+                        <input type="text" name="username" value="" size="24">
+                    </td>
+                </tr>
+                <tr>
+                    <th>
+                        パスワード
+                    </th>
+                    <td>
+                        <input type="password" name="password" value="" size="24">
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="2">
+                        <input type="submit" value="許可">
+                    </td>
+                </tr>
+            </form>
+        </table>
+    </div>
+</body>
+</html>

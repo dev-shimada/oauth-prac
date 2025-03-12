@@ -1,50 +1,45 @@
 package main
 
 type Session struct {
-	client                string
-	state                 string
-	scopes                string
-	redirectUri           string
-	code_challenge        string
-	code_challenge_method string
-	// OIDC用
+	client string
+	scopes string
 	// nonce string
 	// IDトークンを払い出すか否か、trueならIDトークンもfalseならOAuthでトークンだけ払い出す
 	// oidc bool
 }
 
-type Client struct {
-	id          string
-	name        string
-	redirectURL string
-	secret      string
-}
+// type Client struct {
+// 	id          string
+// 	name        string
+// 	redirectURL string
+// 	secret      string
+// }
 
-type User struct {
-	id          int
-	name        string
-	password    string
-	sub         string
-	name_ja     string
-	given_name  string
-	family_name string
-	locale      string
-}
+// type User struct {
+// 	id          int
+// 	name        string
+// 	password    string
+// 	sub         string
+// 	name_ja     string
+// 	given_name  string
+// 	family_name string
+// 	locale      string
+// }
 
-type AuthCode struct {
-	user         string
-	clientId     string
-	scopes       string
-	redirect_uri string
-	expires_at   int64
-}
+// type AuthCode struct {
+// 	user         string
+// 	clientId     string
+// 	scopes       string
+// 	redirect_uri string
+// 	expires_at   int64
+// }
 
-type TokenCode struct {
-	user       string
-	clientId   string
-	scopes     string
-	expires_at int64
-}
+// type TokenCode struct {
+// 	user       string
+// 	clientId   string
+// 	scopes     string
+// 	expires_at int64
+// }
 
 type TokenResponse struct {
 	AccessToken string `json:"access_token"`
