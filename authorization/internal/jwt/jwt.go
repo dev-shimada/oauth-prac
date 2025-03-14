@@ -10,7 +10,7 @@ import (
 // 　JWKを作成してJSONにして返す
 func MakeJWK() []byte {
 
-	data, _ := os.ReadFile("public-key.pem")
+	data, _ := os.ReadFile("jwt-public.pem")
 	keyset, _ := jwk.ParseKey(data, jwk.WithPEM(true))
 
 	keyset.Set(jwk.KeyIDKey, "12345678")
