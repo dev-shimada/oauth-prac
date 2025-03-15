@@ -48,7 +48,7 @@ func main() {
 	defer stop()
 
 	srv := &http.Server{
-		Addr:    ":8080",
+		Addr:    ":8081",
 		Handler: mux,
 	}
 

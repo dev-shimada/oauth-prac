@@ -18,6 +18,6 @@
         "source=${localWorkspaceFolder}/,target=/workspace,type=bind"
     ],
     "remoteUser": "root",
-    "forwardPorts": [8080],
+    "forwardPorts": [8080, 8081],
     "postCreateCommand": "/bin/sh .devcontainer/post_create.sh"
 }
