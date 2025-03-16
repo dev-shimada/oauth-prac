@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -81,12 +80,12 @@ func verifyJWTSignature(jwtdata JwtData, id_token string) error {
 
 	req, err := http.NewRequest("GET", oidc.keyEndpoint, nil)
 	if err != nil {
-		return fmt.Errorf("http request err : %s\n", err)
+		return fmt.Errorf("http request err : %s", err)
 	}
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("http client err : %s\n", err)
+		return fmt.Errorf("http client err : %s", err)
 	}
 	defer resp.Body.Close()
 	json.NewDecoder(resp.Body).Decode(&keyList)
@@ -139,7 +138,7 @@ func verifyJWTSignature(jwtdata JwtData, id_token string) error {
 
 func verifyJWT(tokenString string) {
 
-	data, err := ioutil.ReadFile("../goauth-server/public-key.pem")
+	data, err := os.ReadFile("../goauth-server/public-key.pem")
 	if err != nil {
 		log.Printf("read pub key is err : %s\n", err)
 		os.Exit(1)

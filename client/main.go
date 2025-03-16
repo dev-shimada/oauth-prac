@@ -3,10 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 )
 
@@ -48,12 +49,11 @@ func main() {
 }
 
 func readJson() {
-	data, err := ioutil.ReadFile("client_secret.json")
+	data, err := os.ReadFile("client_secret.json")
 	if err != nil {
 		log.Fatal(err)
 	}
 	json.Unmarshal(data, &secrets)
-	return
 }
 
 func setUp() {
@@ -69,8 +69,8 @@ func setUp() {
 		oidc.keyEndpoint = "http://localhost:8081/certs"
 	} else {
 		oidc.iss = "https://accounts.google.com"
-		oidc.clientId = secrets["web"].(map[string]interface{})["client_id"].(string)
-		oidc.clientSecret = secrets["web"].(map[string]interface{})["client_secret"].(string)
+		oidc.clientId = secrets["web"].(map[string]any)["client_id"].(string)
+		oidc.clientSecret = secrets["web"].(map[string]any)["client_secret"].(string)
 		oidc.authEndpoint = "https://accounts.google.com/o/oauth2/v2/auth"
 		oidc.tokenEndpoint = "https://www.googleapis.com/oauth2/v4/token"
 		oidc.userInfoEndpoint = "https://openidconnect.googleapis.com/v1/userinfo"
@@ -93,7 +93,7 @@ func login(w http.ResponseWriter, req *http.Request) {
 
 	log.Printf("http redirect to: %s", fmt.Sprintf("%s?%s", oidc.authEndpoint, v.Encode()))
 	// Googleの認可エンドポイントにリダイレクトさせる
-	http.Redirect(w, req, fmt.Sprintf("%s?%s", oidc.authEndpoint, v.Encode()), 302)
+	http.Redirect(w, req, fmt.Sprintf("%s?%s", oidc.authEndpoint, v.Encode()), http.StatusFound)
 }
 
 func tokenRequest(query url.Values, c *http.Cookie) (map[string]interface{}, error) {
@@ -118,7 +118,7 @@ func tokenRequest(query url.Values, c *http.Cookie) (map[string]interface{}, err
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +166,7 @@ func callback(w http.ResponseWriter, req *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println(err)
 	}
