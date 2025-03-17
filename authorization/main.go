@@ -44,8 +44,8 @@ func main() {
 	mux.HandleFunc("/userinfo", userinfo)
 
 	// Wait here until CTRL+C or other term signal is received
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	ctx, _ := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// defer stop()
 
 	srv := &http.Server{
 		Addr:    ":8081",
