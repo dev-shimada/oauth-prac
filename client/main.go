@@ -1,28 +1,29 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
-	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 )
 
-var secrets map[string]interface{}
-
-var oidc struct {
-	iss              string
-	clientId         string
-	clientSecret     string
-	state            string
-	authEndpoint     string
-	tokenEndpoint    string
-	userInfoEndpoint string
-	keyEndpoint      string
-	nonce            string
+var oidcLocal = oidc{
+	iss:              "https://oreore.oidc.com",
+	clientId:         "1234",
+	clientSecret:     "secret",
+	authEndpoint:     "http://localhost:8081/auth",
+	tokenEndpoint:    "http://localhost:8081/token",
+	userInfoEndpoint: "http://localhost:8081/userinfo",
+	keyEndpoint:      "http://localhost:8081/certs",
+	state:            "xyz",
+	nonce:            "abc",
 }
 
 const (
@@ -35,77 +36,59 @@ const (
 )
 
 func main() {
-	setUp()
-	http.HandleFunc("/login", login)
-	http.HandleFunc("/callback", callback)
-	if LOCAL {
-		log.Println("start server localhost:8080...")
-		log.Println("oidc server is local mode")
-	}
-	err := http.ListenAndServe("localhost:8080", nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Hello, World!"))
+	})
+	mux.HandleFunc("/login", login)
+	mux.HandleFunc("/callback", callback)
 
-func readJson() {
-	data, err := os.ReadFile("client_secret.json")
-	if err != nil {
-		log.Fatal(err)
+	// Wait here until CTRL+C or other term signal is received
+	ctx, _ := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// defer stop()
+
+	srv := &http.Server{
+		Addr:    ":8080",
+		Handler: mux,
 	}
-	json.Unmarshal(data, &secrets)
-}
 
-func setUp() {
+	log.Println("Server is running at :8080 Press CTRL-C to exit.")
+	go srv.ListenAndServe()
 
-	readJson()
-	if LOCAL {
-		oidc.iss = "https://oreore.oidc.com"
-		oidc.clientId = "1234"
-		oidc.clientSecret = "secret"
-		oidc.authEndpoint = "http://localhost:8081/auth"
-		oidc.tokenEndpoint = "http://localhost:8081/token"
-		oidc.userInfoEndpoint = "http://localhost:8081/userinfo"
-		oidc.keyEndpoint = "http://localhost:8081/certs"
-	} else {
-		oidc.iss = "https://accounts.google.com"
-		oidc.clientId = secrets["web"].(map[string]any)["client_id"].(string)
-		oidc.clientSecret = secrets["web"].(map[string]any)["client_secret"].(string)
-		oidc.authEndpoint = "https://accounts.google.com/o/oauth2/v2/auth"
-		oidc.tokenEndpoint = "https://www.googleapis.com/oauth2/v4/token"
-		oidc.userInfoEndpoint = "https://openidconnect.googleapis.com/v1/userinfo"
-		oidc.keyEndpoint = "https://www.googleapis.com/oauth2/v3/certs"
+	<-ctx.Done()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("HTTP server Shutdown: %v", err)
 	}
-	oidc.state = "xyz"
-	oidc.nonce = "abc"
-
 }
 
 func login(w http.ResponseWriter, req *http.Request) {
 
 	v := url.Values{}
 	v.Add("response_type", response_type)
-	v.Add("client_id", oidc.clientId)
-	v.Add("state", oidc.state)
+	v.Add("client_id", oidcLocal.clientId)
+	v.Add("state", oidcLocal.state)
 	v.Add("scope", scope)
 	v.Add("redirect_uri", redirect_uri)
-	v.Add("nonce", oidc.nonce)
+	v.Add("nonce", oidcLocal.nonce)
 
-	log.Printf("http redirect to: %s", fmt.Sprintf("%s?%s", oidc.authEndpoint, v.Encode()))
+	log.Printf("http redirect to: %s", fmt.Sprintf("%s?%s", oidcLocal.authEndpoint, v.Encode()))
 	// Googleの認可エンドポイントにリダイレクトさせる
-	http.Redirect(w, req, fmt.Sprintf("%s?%s", oidc.authEndpoint, v.Encode()), http.StatusFound)
+	http.Redirect(w, req, fmt.Sprintf("%s?%s", oidcLocal.authEndpoint, v.Encode()), http.StatusFound)
 }
 
 func tokenRequest(query url.Values, c *http.Cookie) (map[string]interface{}, error) {
 
 	v := url.Values{}
-	v.Add("client_id", oidc.clientId)
-	v.Add("client_secret", oidc.clientSecret)
+	v.Add("client_id", oidcLocal.clientId)
+	v.Add("client_secret", oidcLocal.clientSecret)
 	v.Add("grant_type", grant_type)
 	v.Add("code", query.Get("code"))
 	v.Add("redirect_uri", redirect_uri)
 
-	req, err := http.NewRequest("POST", oidc.tokenEndpoint, strings.NewReader(v.Encode()))
+	req, err := http.NewRequest("POST", oidcLocal.tokenEndpoint, strings.NewReader(v.Encode()))
 	if err != nil {
 		return nil, err
 	}
@@ -142,17 +125,17 @@ func callback(w http.ResponseWriter, req *http.Request) {
 	id_token := token["id_token"].(string)
 	verifyJWT(id_token)
 	jwtdata := decodeJWT(id_token)
-	err = verifyJWTSignature(jwtdata, id_token)
+	err = verifyJWTSignature(jwtdata, id_token, oidcLocal)
 	if err != nil {
 		log.Printf("verify JWT Signature err : %s", err)
 	}
 
-	err = verifyToken(jwtdata, token["access_token"].(string))
+	err = verifyToken(jwtdata, token["access_token"].(string), oidcLocal)
 	if err != nil {
 		log.Printf("verifyToken is err : %s", err)
 	}
 
-	userInfoURL := oidc.userInfoEndpoint
+	userInfoURL := oidcLocal.userInfoEndpoint
 	log.Println(userInfoURL)
 	req, err = http.NewRequest("GET", userInfoURL, nil)
 	if nil != err {

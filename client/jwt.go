@@ -73,7 +73,7 @@ func decodeJWT(idToken string) (jwtdata JwtData) {
 	return jwtdata
 }
 
-func verifyJWTSignature(jwtdata JwtData, id_token string) error {
+func verifyJWTSignature(jwtdata JwtData, id_token string, oidc oidc) error {
 
 	pubkey := rsa.PublicKey{}
 	var keyList map[string]interface{}
@@ -171,7 +171,7 @@ func verifyJWT(tokenString string) {
 
 }
 
-func verifyToken(data JwtData, access_token string) error {
+func verifyToken(data JwtData, access_token string, oidc oidc) error {
 
 	// トークン発行元の確認
 	if oidc.iss != data.payLoad["iss"].(string) {

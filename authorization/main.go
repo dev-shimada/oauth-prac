@@ -52,7 +52,7 @@ func main() {
 		Handler: mux,
 	}
 
-	log.Println("Server is running at :8080 Press CTRL-C to exit.")
+	log.Println("Server is running at :8081 Press CTRL-C to exit.")
 	go srv.ListenAndServe()
 
 	<-ctx.Done()
