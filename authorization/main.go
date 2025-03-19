@@ -81,6 +81,7 @@ func auth(w http.ResponseWriter, req *http.Request) {
 	}
 	// client id の一致確認
 	if clientInfo.id != query.Get("client_id") {
+		log.Printf("want: %s, got: %s", clientInfo.id, query.Get("client_id"))
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("client_id is not match"))
 		return
