@@ -141,6 +141,8 @@ var user = User{
 	locale:      "ja",
 }
 
+var AuthCodeList = make(map[string]AuthCode)
+
 func authCheck(w http.ResponseWriter, req *http.Request) {
 
 	loginUser := req.FormValue("username")
@@ -165,7 +167,7 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 		}
 		// 認可コードを保存
 		// var AuthCodeList = make(map[string]AuthCode)
-		// AuthCodeList[authCodeString] = authData
+		AuthCodeList[authCodeString] = authData
 
 		log.Printf("auth code accepet : %v\n", authData)
 
@@ -183,7 +185,6 @@ func base64URLEncode(verifier string) string {
 	return base64.RawURLEncoding.EncodeToString(hash[:])
 }
 
-var AuthCodeList = make(map[string]AuthCode)
 var TokenCodeList = make(map[string]TokenCode)
 
 // トークンを発行するエンドポイント
@@ -223,7 +224,8 @@ func token(w http.ResponseWriter, req *http.Request) {
 	if v.clientId != query.Get("client_id") {
 		log.Println("client_id not match")
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("invalid_request. client_id not match.\n"))
+		// w.Write([]byte("invalid_request. client_id not match.\n"))
+		w.Write([]byte("client_id is not match"))
 	}
 
 	// 認可リクエスト時のリダイレクトURIと比較

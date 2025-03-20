@@ -24,9 +24,9 @@ import (
 
 type JwtData struct {
 	header_payload string
-	header         map[string]interface{}
+	header         map[string]any
 	header_raw     string
-	payLoad        map[string]interface{}
+	payLoad        map[string]any
 	payLoad_raw    string
 	signature      []byte
 }
