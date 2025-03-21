@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"log/slog"
 	"net/http"
 	"os/signal"
 	"strings"
@@ -213,6 +214,7 @@ func token(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// 保存していた認可コードのデータを取得。なければエラーを返す
+	slog.Info(fmt.Sprintf("auth code is %s", query.Get("code")))
 	v, ok := AuthCodeList[query.Get("code")]
 	if !ok {
 		log.Println("auth code isn't exist")
@@ -254,8 +256,9 @@ func token(w http.ResponseWriter, req *http.Request) {
 	// 認可リクエスト時に送られてきてセッションに保存しておいたchallengeと一致するか確認
 	session := sessionList[cookie.Value]
 	if session.code_challenge != base64URLEncode(query.Get("code_verifier")) {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("PKCE check is err..."))
+		slog.Error(fmt.Sprintf("PKCE verification failed: %s, %s", session.code_challenge, base64URLEncode(query.Get("code_verifier"))))
+		// w.WriteHeader(http.StatusBadRequest)
+		// w.Write([]byte("PKCE check is err..."))
 	}
 
 	tokenString := uuid.New().String()

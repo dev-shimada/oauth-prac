@@ -75,7 +75,6 @@ func login(w http.ResponseWriter, req *http.Request) {
 	v.Add("nonce", oidcLocal.nonce)
 
 	log.Printf("http redirect to: %s", fmt.Sprintf("%s?%s", oidcLocal.authEndpoint, v.Encode()))
-	// Googleの認可エンドポイントにリダイレクトさせる
 	http.Redirect(w, req, fmt.Sprintf("%s?%s", oidcLocal.authEndpoint, v.Encode()), http.StatusFound)
 }
 
@@ -105,7 +104,7 @@ func tokenRequest(query url.Values, c *http.Cookie) (map[string]interface{}, err
 	if err != nil {
 		return nil, err
 	}
-	var token map[string]interface{}
+	var token map[string]any
 	json.Unmarshal(body, &token)
 
 	log.Printf("token response :%s\n", string(body))
