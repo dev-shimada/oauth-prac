@@ -53,7 +53,7 @@ func main() {
 		Handler: mux,
 	}
 
-	log.Println("Server is running at :8081 Press CTRL-C to exit.")
+	slog.Info("Server is running at :8081 Press CTRL-C to exit.")
 	go srv.ListenAndServe()
 
 	<-ctx.Done()
@@ -61,7 +61,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Printf("HTTP server Shutdown: %v", err)
+		slog.Info(fmt.Sprintf("HTTP server Shutdown: %v", err))
 	}
 
 }
