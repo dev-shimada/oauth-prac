@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os/signal"
@@ -64,7 +68,52 @@ func main() {
 	}
 }
 
+func generateCodeVerifier() string {
+	const length = 43
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~"
+	// init random seed
+	rand.New(rand.NewSource(time.Now().UnixNano()))
+	// create a random string
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+
+	return string(b)
+}
+
+type CodeChallengeMethod string
+
+const (
+	CodeChallengePlain CodeChallengeMethod = "plain"
+	CodeChallengeS256  CodeChallengeMethod = "S256"
+)
+
+// generateCodeChallenge generates a code challenge from a code verifier using the given code challenge method.
+// If the code challenge method is "plain", the code challenge is the same as the code verifier.
+// If the code challenge method is "S256", the code challenge is the base64-url-encoded SHA-256 hash of the code verifier.
+func generateCodeChallenge(codeVerifier string, ccm CodeChallengeMethod) string {
+	// If the code challenge method is "plain", the code challenge is the same as the code verifier
+	if ccm == CodeChallengePlain {
+		return codeVerifier
+	}
+
+	// Hash the code verifier using SHA-256
+	h := sha256.New()
+	h.Write([]byte(codeVerifier))
+	hashed := h.Sum(nil)
+
+	// Base64-url-encode the hash and remove any padding
+	codeChallenge := base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(hashed)
+
+	return codeChallenge
+}
+
 func login(w http.ResponseWriter, req *http.Request) {
+	codeVerifier := generateCodeVerifier()
+	codeChallenge := generateCodeChallenge(codeVerifier, CodeChallengeS256)
+	slog.Info(fmt.Sprintf("codeVerifier: %s", codeVerifier))
+	slog.Info(fmt.Sprintf("codeChallenge: %s", codeChallenge))
 
 	v := url.Values{}
 	v.Add("response_type", response_type)
@@ -73,6 +122,8 @@ func login(w http.ResponseWriter, req *http.Request) {
 	v.Add("scope", scope)
 	v.Add("redirect_uri", redirect_uri)
 	v.Add("nonce", oidcLocal.nonce)
+	v.Add("code_challenge", codeChallenge)
+	v.Add("code_challenge_method", string(CodeChallengeS256))
 
 	log.Printf("http redirect to: %s", fmt.Sprintf("%s?%s", oidcLocal.authEndpoint, v.Encode()))
 	http.Redirect(w, req, fmt.Sprintf("%s?%s", oidcLocal.authEndpoint, v.Encode()), http.StatusFound)
@@ -86,6 +137,7 @@ func tokenRequest(query url.Values, c *http.Cookie) (map[string]interface{}, err
 	v.Add("grant_type", grant_type)
 	v.Add("code", query.Get("code"))
 	v.Add("redirect_uri", redirect_uri)
+	v.Add("code_verifier", query.Get("code_verifier"))
 
 	req, err := http.NewRequest("POST", oidcLocal.tokenEndpoint, strings.NewReader(v.Encode()))
 	if err != nil {

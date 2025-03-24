@@ -167,7 +167,6 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 			expires_at:   time.Now().Unix() + 300,
 		}
 		// 認可コードを保存
-		// var AuthCodeList = make(map[string]AuthCode)
 		AuthCodeList[authCodeString] = authData
 
 		log.Printf("auth code accepet : %v\n", authData)
@@ -180,10 +179,31 @@ func authCheck(w http.ResponseWriter, req *http.Request) {
 
 }
 
+type CodeChallengeMethod string
+
+const (
+	CodeChallengePlain CodeChallengeMethod = "plain"
+	CodeChallengeS256  CodeChallengeMethod = "S256"
+)
+
 // https://auth0.com/docs/authorization/flows/call-your-api-using-the-authorization-code-flow-with-pkce#javascript-sample
-func base64URLEncode(verifier string) string {
-	hash := sha256.Sum256([]byte(verifier))
-	return base64.RawURLEncoding.EncodeToString(hash[:])
+func base64URLEncode(verifier string, ccm CodeChallengeMethod) string {
+	// hash := sha256.Sum256([]byte(verifier))
+	// return base64.RawURLEncoding.EncodeToString(hash[:])
+	// If the code challenge method is "plain", the code challenge is the same as the code verifier
+	if ccm == CodeChallengePlain {
+		return verifier
+	}
+
+	// Hash the code verifier using SHA-256
+	h := sha256.New()
+	h.Write([]byte(verifier))
+	hashed := h.Sum(nil)
+
+	// Base64-url-encode the hash and remove any padding
+	codeChallenge := base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(hashed)
+
+	return codeChallenge
 }
 
 var TokenCodeList = make(map[string]TokenCode)
@@ -255,10 +275,10 @@ func token(w http.ResponseWriter, req *http.Request) {
 	// clientから送られてきたverifyをsh256で計算&base64urlエンコードしてから
 	// 認可リクエスト時に送られてきてセッションに保存しておいたchallengeと一致するか確認
 	session := sessionList[cookie.Value]
-	if session.code_challenge != base64URLEncode(query.Get("code_verifier")) {
-		slog.Error(fmt.Sprintf("PKCE verification failed: %s, %s", session.code_challenge, base64URLEncode(query.Get("code_verifier"))))
-		// w.WriteHeader(http.StatusBadRequest)
-		// w.Write([]byte("PKCE check is err..."))
+	if session.code_challenge != base64URLEncode(query.Get("code_verifier"), CodeChallengeS256) {
+		slog.Error(fmt.Sprintf("PKCE verification failed: %s, %s", session.code_challenge, base64URLEncode(query.Get("code_verifier"), CodeChallengeS256)))
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("PKCE check is err..."))
 	}
 
 	tokenString := uuid.New().String()
