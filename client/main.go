@@ -109,8 +109,11 @@ func generateCodeChallenge(codeVerifier string, ccm CodeChallengeMethod) string 
 	return codeChallenge
 }
 
+var session = make(map[string]string)
+
 func login(w http.ResponseWriter, req *http.Request) {
 	codeVerifier := generateCodeVerifier()
+	session["code_verifier"] = codeVerifier
 	codeChallenge := generateCodeChallenge(codeVerifier, CodeChallengeS256)
 	slog.Info(fmt.Sprintf("codeVerifier: %s", codeVerifier))
 	slog.Info(fmt.Sprintf("codeChallenge: %s", codeChallenge))
@@ -137,7 +140,7 @@ func tokenRequest(query url.Values, c *http.Cookie) (map[string]interface{}, err
 	v.Add("grant_type", grant_type)
 	v.Add("code", query.Get("code"))
 	v.Add("redirect_uri", redirect_uri)
-	v.Add("code_verifier", query.Get("code_verifier"))
+	v.Add("code_verifier", session["code_verifier"])
 
 	req, err := http.NewRequest("POST", oidcLocal.tokenEndpoint, strings.NewReader(v.Encode()))
 	if err != nil {
@@ -173,6 +176,7 @@ func callback(w http.ResponseWriter, req *http.Request) {
 		log.Println(err)
 	}
 
+	// not defined
 	id_token := token["id_token"].(string)
 	verifyJWT(id_token)
 	jwtdata := decodeJWT(id_token)
