@@ -1,5 +1,5 @@
 {
-    "name": "oidc-prac",
+    "name": "oauth-prac",
     "build": {
         "context": ".",
         "dockerfile": "Dockerfile",
